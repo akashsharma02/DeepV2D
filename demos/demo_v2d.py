@@ -47,7 +47,7 @@ def main(args):
             args.cfg = 'cfgs/kitti.yaml'
         else:
             args.cfg = 'cfgs/nyu.yaml'
-        
+
     cfg = config.cfg_from_file(args.cfg)
     is_calibrated = not args.uncalibrated
 
@@ -59,11 +59,11 @@ def main(args):
 
         # call deepv2d on a video sequence
         images, intrinsics = load_test_sequence(args.sequence)
-        
+
         if is_calibrated:
-            depths, poses = deepv2d(images, intrinsics, viz=True, iters=args.n_iters)
+            depths, poses = deepv2d(images, intrinsics, viz=False, iters=args.n_iters)
         else:
-            depths, poses = deepv2d(images, viz=True, iters=args.n_iters)
+            depths, poses = deepv2d(images, viz=False, iters=args.n_iters)
 
 
 if __name__ == '__main__':
@@ -71,7 +71,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--cfg', help='config file used to train the model')
     parser.add_argument('--model', default='models/nyu.ckpt', help='path to model checkpoint')
-    
+
     parser.add_argument('--mode', default='keyframe', help='keyframe or global pose optimization')
     parser.add_argument('--fcrn', action="store_true", help='use fcrn for initialization')
     parser.add_argument('--n_iters', type=int, default=5, help='number of iterations to use')

@@ -3,6 +3,9 @@
 *.o
 demo_videos/kitti/
 demo_videos/nyu/
+data/
+output/
+*.ply
 *.zip
 checkpoints
 logs

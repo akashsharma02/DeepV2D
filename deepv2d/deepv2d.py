@@ -5,6 +5,8 @@ import cv2
 import vis
 from scipy import interpolate
 import matplotlib.pyplot as plt
+import struct
+import os
 
 from modules.depth import DepthNetwork
 from modules.motion import MotionNetwork
@@ -40,15 +42,15 @@ def pose_distance(G):
 
 
 class DeepV2D:
-    def __init__(self, cfg, ckpt, 
-                 is_calibrated=True, 
-                 use_fcrn=False, 
-                 use_regressor=True, 
+    def __init__(self, cfg, ckpt,
+                 is_calibrated=True,
+                 use_fcrn=False,
+                 use_regressor=True,
                  image_dims=None,
                  mode='keyframe'):
 
         self.cfg = cfg
-        self.ckpt = ckpt 
+        self.ckpt = ckpt
         self.mode = mode
 
         self.use_fcrn = use_fcrn
@@ -117,7 +119,7 @@ class DeepV2D:
         images = self.images_placeholder[tf.newaxis]
         depths = self.depths_placeholder[tf.newaxis]
         poses = self.poses_placeholder[tf.newaxis]
-        
+
         do_init = self.init_placeholder
         intrinsics = self.intrinsics_placeholder[tf.newaxis]
         edge_inds = tf.unstack(self.edges_placeholder, num=2, axis=-1)
@@ -125,7 +127,7 @@ class DeepV2D:
         # convert pose matrix into SE3 object
         Ts = VideoSE3Transformation(matrix=poses)
 
-        Ts, intrinsics = self.motion_net.forward(Ts, 
+        Ts, intrinsics = self.motion_net.forward(Ts,
             images, depths, intrinsics, edge_inds, init=do_init)
 
         self.outputs['poses'] = tf.squeeze(Ts.matrix(), 0)
@@ -144,7 +146,7 @@ class DeepV2D:
         adj_list = None
         if self.mode == 'global':
             adj_list = self.adj_placeholder
-        
+
         depths = self.depth_net.forward(Ts, images, intrinsics, adj_list)
         self.outputs['depths'] = depths
 
@@ -174,7 +176,7 @@ class DeepV2D:
 
         Ts = VideoSE3Transformation(matrix=poses)
         X0 = projective_ops.backproject(depths, intrinsics)
-        
+
         # transform point cloud into coordinate system defined by first frame
         X1 = (Ts.gather(ii) * Ts.gather(jj).inv())(X0)
 
@@ -184,7 +186,7 @@ class DeepV2D:
         X1 = X1[:, :, crop_h:-crop_h, crop_w:-crop_w]
         valid = valid[:, :, crop_h:-crop_h, crop_w:-crop_w]
         images = images[:, :, crop_h:-crop_h, crop_w:-crop_w, ::-1]
-        
+
         X1 = tf.reshape(X1, [-1, 3])
         colors = tf.reshape(images, [-1, 3])
 
@@ -255,9 +257,9 @@ class DeepV2D:
         flo_graph = tf.reduce_mean(flo_graph, [-1, -2])
 
         contained = tf.to_float(
-            (coords[...,0] > 0.0) & (coords[...,0] < wd) & 
+            (coords[...,0] > 0.0) & (coords[...,0] < wd) &
             (coords[...,1] > 0.0) & (coords[...,1] < ht))
-        
+
         vis_graph = tf.reduce_mean(contained, [-1, -2])
         self.outputs['visibility'] = (flo_graph[0], vis_graph[0], flow)
 
@@ -276,13 +278,13 @@ class DeepV2D:
         self.outputs['fcrn'] = tf.squeeze(fcrn_output, -1)
 
     def compute_visibility_matrix(self):
-        """ Computes a matrix of optical flow and visibility between all pairs of frames 
+        """ Computes a matrix of optical flow and visibility between all pairs of frames
         Ex. flo_matrix[i,j] is the mean optical flow between camera i and camera j
         Ex. vis_matrix[i,j] is the portion of points in camera i visibile in camera j """
-        
+
         num = len(self.images)
         ii, jj = np.meshgrid(np.arange(num), np.arange(num))
-        
+
         ii = np.reshape(ii, [-1])
         jj = np.reshape(jj, [-1])
         edges = np.stack([jj, ii], axis=-1)
@@ -315,7 +317,7 @@ class DeepV2D:
                 feed_dict = {self.images_placeholder: self.images[[0]]}
             else:
                 feed_dict = {self.images_placeholder: self.images}
-            
+
             self.depths = self.sess.run(self.outputs['fcrn'], feed_dict=feed_dict)
 
         else:
@@ -347,7 +349,7 @@ class DeepV2D:
             ii, jj = np.meshgrid(np.arange(1), np.arange(1,n))
         else:
             ii, jj = np.meshgrid(np.arange(n), np.arange(n))
-        
+
         ii = ii.reshape(-1)
         jj = jj.reshape(-1)
         v = ~np.equal(ii, jj)
@@ -362,7 +364,7 @@ class DeepV2D:
             self.edges_placeholder: edges,
             self.init_placeholder: (itr==0),
             self.intrinsics_placeholder: self.intrinsics}
-            
+
         # execute pose subgraph
         outputs = [self.outputs['poses'], self.outputs['intrinsics'], self.outputs['weights']]
         self.poses, self.intrinsics, self.weights = self.sess.run(outputs, feed_dict=feed_dict)
@@ -379,7 +381,7 @@ class DeepV2D:
                 self.images_placeholder: self.images,
                 self.poses_placeholder: self.poses,
                 self.intrinsics_placeholder: self.intrinsics}
-        
+
             self.depths = self.sess.run(self.outputs['depths'], feed_dict=feed_dict)
 
         else:
@@ -425,7 +427,7 @@ class DeepV2D:
         image_depth = vis.create_image_depth_figure(keyframe_image, keyframe_depth)
         cv2.imwrite('depth.png', image_depth[:, image_depth.shape[1]//2:])
         cv2.imshow('image_depth', image_depth/255.0)
-        
+
         print("Press any key to cotinue")
         cv2.waitKey()
 
@@ -435,6 +437,55 @@ class DeepV2D:
         print("Press q to exit")
         vis.visualize_prediction(point_cloud, point_colors, self.poses)
 
+    def save_output(self, inds=[0]):
+        feed_dict = {
+                    self.images_placeholder: self.images,
+                    self.depths_placeholder: self.depths,
+                    self.poses_placeholder: self.poses,
+                    self.intrinsics_placeholder: self.intrinsics}
+
+        keyframe_image = self.images[0]
+        keyframe_depth = self.depths[0]
+
+        image_depth = vis.create_image_depth_figure(keyframe_image, keyframe_depth)
+        cv2.imwrite('depth.png', image_depth[:, image_depth.shape[1]//2:])
+
+        # use depth map to create point cloud
+        point_cloud, point_colors = self.sess.run(self.outputs['point_cloud'], feed_dict=feed_dict)
+        print(point_colors.shape, point_colors.dtype)
+        self.write_pointcloud("pointcloud.ply", point_cloud, point_colors)
+
+    def write_pointcloud(self, filename,xyz_points,rgb_points=None):
+
+        """ creates a .pkl file of the point clouds generated
+        """
+
+        assert xyz_points.shape[1] == 3,'Input XYZ points should be Nx3 float array'
+        if rgb_points is None:
+            rgb_points = np.ones(xyz_points.shape).astype(np.uint8)*255
+        else:
+            rgb_points = (rgb_points * 255).astype(np.uint8)
+        assert xyz_points.shape == rgb_points.shape,'Input RGB colors should be Nx3 float array and have same size as input XYZ points'
+
+        # Write header of .ply file
+        fid = open(filename,'wb')
+        fid.write(bytes('ply\n', 'utf-8'))
+        fid.write(bytes('format binary_little_endian 1.0\n', 'utf-8'))
+        fid.write(bytes('element vertex %d\n'%xyz_points.shape[0], 'utf-8'))
+        fid.write(bytes('property float x\n', 'utf-8'))
+        fid.write(bytes('property float y\n', 'utf-8'))
+        fid.write(bytes('property float z\n', 'utf-8'))
+        fid.write(bytes('property uchar red\n', 'utf-8'))
+        fid.write(bytes('property uchar green\n', 'utf-8'))
+        fid.write(bytes('property uchar blue\n', 'utf-8'))
+        fid.write(bytes('end_header\n', 'utf-8'))
+
+        # Write 3D points to .ply file
+        for i in range(xyz_points.shape[0]):
+            fid.write(bytearray(struct.pack("fffccc",xyz_points[i,0],xyz_points[i,1],xyz_points[i,2],
+                                            rgb_points[i,1].tostring(),rgb_points[i,1].tostring(),
+                                            rgb_points[i,2].tostring())))
+        fid.close()
 
     def __call__(self, images, intrinsics=None, iters=5, viz=False):
         n_frames = len(images)
@@ -456,14 +507,17 @@ class DeepV2D:
         self.poses = poses
 
         # initalize reconstruction
-        self.deepv2d_init() 
+        self.deepv2d_init()
 
         for i in range(iters):
-            self.update_poses(i)    
+            self.update_poses(i)
             self.update_depths()
 
         if viz:
             self.vizualize_output()
+        else:
+            self.save_output()
+
 
         return self.depths, self.poses
 

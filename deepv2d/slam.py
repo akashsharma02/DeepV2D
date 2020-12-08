@@ -41,9 +41,9 @@ def pose_distance(G):
 
 
 class DeepV2DSLAM:
-    def __init__(self, cfg, ckpt, n_keyframes=1, rate=2, use_fcrn=True, 
+    def __init__(self, cfg, ckpt, n_keyframes=1, rate=2, use_fcrn=True,
             viz=True, mode='global', image_dims=[None, 480, 640]):
-        
+
         self.cfg = cfg
         self.ckpt = ckpt
 
@@ -96,7 +96,7 @@ class DeepV2DSLAM:
         # new points and poses get added to the queue
         self.queue = Queue()
         self.vis_counter = 0
-        
+
         self.viz = vis.InteractiveViz(self.queue, cinematic, render_path, clear_points)
         self.viz.start()
 
@@ -121,22 +121,22 @@ class DeepV2DSLAM:
     def _build_motion_graph(self):
         """ Motion graph updates poses using depth as input """
 
-        self.motion_net = MotionNetwork(self.cfg.MOTION, 
+        self.motion_net = MotionNetwork(self.cfg.MOTION,
                                         mode='global',          # use global optimization mode
                                         is_training=False)
-        
+
         images = self.images_placeholder[tf.newaxis]
         depths = self.depths_placeholder[tf.newaxis]
         poses = self.poses_placeholder[tf.newaxis]
         intrinsics = self.intrinsics_placeholder[tf.newaxis]
         edge_inds = tf.unstack(self.edges_placeholder, num=2, axis=-1)
-            
+
         # convert pose matricies into SE3 object
         Ts = VideoSE3Transformation(matrix=poses)
         batch, num = Ts.shape()
-        
-        Ts, intrinsics = self.motion_net.forward(Ts, images, depths, intrinsics, 
-                                                 inds=edge_inds, 
+
+        Ts, intrinsics = self.motion_net.forward(Ts, images, depths, intrinsics,
+                                                 inds=edge_inds,
                                                  num_fixed=self.fixed_placeholder)
 
         # convert SE3 object back to matrix representation
@@ -156,7 +156,7 @@ class DeepV2DSLAM:
         adj_list = None
         if self.mode == 'global':
             adj_list = self.adj_placeholder
-        
+
         depths = self.depth_net.forward(Ts, images, intrinsics, adj_list)
         self.outputs['depths'] = depths
 
@@ -179,7 +179,7 @@ class DeepV2DSLAM:
         flow = Tij.induced_flow(depths, intrinsics)
         coords = Tij.transform(depths, intrinsics)
 
-        # translation only 
+        # translation only
         rotation_mask = [1.0, 1.0, 1.0, 0.0, 0.0, 0.0]
         flow_translation = Tij.induced_flow(depths, intrinsics)
 
@@ -190,9 +190,9 @@ class DeepV2DSLAM:
         pos_graph = tf.reduce_mean(pos_graph, [-1, -2])
 
         contained = tf.to_float(
-            (coords[...,0] > 0.0) & (coords[...,0] < wd) & 
+            (coords[...,0] > 0.0) & (coords[...,0] < wd) &
             (coords[...,1] > 0.0) & (coords[...,1] < ht))
-        
+
         vis_graph = tf.reduce_mean(contained, [-1, -2])
         self.outputs['visibility'] = (flo_graph[0], vis_graph[0])
 
@@ -211,16 +211,16 @@ class DeepV2DSLAM:
         self.outputs['fcrn'] = tf.squeeze(fcrn_output, -1)
 
     def compute_visibility_graph(self, edges=None):
-        """ Computes a matrix of optical flow and visibility between all pairs of frames 
+        """ Computes a matrix of optical flow and visibility between all pairs of frames
         Ex. flo_matrix[i,j] is the mean optical flow between camera i and camera j
         Ex. vis_matrix[i,j] is the portion of points in camera i visibile in camera j """
-        
+
         vis_matrix = False
         if edges is None:
             num = len(self.keyframe_images)
             vis_matrix = True
             ii, jj = np.meshgrid(np.arange(num), np.arange(num))
-            
+
             ii = np.reshape(ii, [-1])
             jj = np.reshape(jj, [-1])
             edges = np.stack([jj, ii], axis=-1)
@@ -259,7 +259,7 @@ class DeepV2DSLAM:
         batch, num, ht, wd = tf.unstack(tf.shape(depths), num=4)
         Ts = VideoSE3Transformation(matrix=poses)
         X0 = projective_ops.backproject(depths, intrinsics)
-        
+
         # transform point cloud into world coordinaes
         X1 = Ts.inv()(X0)
 
@@ -271,7 +271,7 @@ class DeepV2DSLAM:
         X1 = X1[:, :, crop_h0:-crop_h1, crop_w:-crop_w]
         valid = valid[:, :, crop_h0:-crop_h1, crop_w:-crop_w]
         images = images[:, :, crop_h0:-crop_h1, crop_w:-crop_w, ::-1]
-        
+
         X1 = tf.reshape(X1, [-1, 3])
         colors = tf.reshape(images, [-1, 3])
 
@@ -353,7 +353,7 @@ class DeepV2DSLAM:
 
         self.depths = [depth for depth in depths_init]
 
-    
+
     def update_poses(self, fixed=1, margin=3):
         """ Update the poses by executing the motion graph, fix first keyframe """
 
@@ -382,11 +382,11 @@ class DeepV2DSLAM:
             self.fixed_placeholder: np.int32(fixed),
             self.init_placeholder: False,
             self.intrinsics_placeholder: self.intrinsics}
-            
+
         # execute pose subgraph
         poses = self.sess.run(self.outputs['poses'], feed_dict=feed_dict)
 
-        # update the poses 
+        # update the poses
         for j in range(poses.shape[0]):
             self.poses[start_idx + j] = poses[j]
 
@@ -410,11 +410,11 @@ class DeepV2DSLAM:
             for j in range(start_idx, n_images):
                 if (i != j) and (abs(i - j) <= self.window):
                     adj_inds.append(j)
-            
+
             # make sure all adj lists are the same size
             if len(adj_inds) < 2*self.window:
                 adj_inds = np.random.choice(adj_inds, 2*self.window, replace=True).tolist()
-                
+
             adj_inds = [i] + adj_inds
             adj_list.append(np.array(adj_inds, dtype=np.int32))
 
@@ -430,7 +430,7 @@ class DeepV2DSLAM:
         }
 
         depths = self.sess.run(self.outputs['depths'], feed_dict=feed_dict)
-        
+
         # update the keyframe depths
         for i, keyframe_index in enumerate(inds):
             self.depths[keyframe_index] = depths[i]
@@ -440,6 +440,7 @@ class DeepV2DSLAM:
         """ Backproject a point cloud then add point cloud to visualization """
 
         self.vis_counter += 1
+        print(f"Visualize output called, vis_counter: {self.vis_counter}")
         keyframe_image = self.images[keyframe_index]
         keyframe_depth = self.depths[keyframe_index]
         keyframe_pose = self.poses[keyframe_index]
@@ -458,11 +459,11 @@ class DeepV2DSLAM:
         # only add the point cloud once in every 5 frames
         if self.vis_counter % 4 == 0:
             self.queue.put((pointcloud, keyframe_pose))
-        
+
         else:
             self.queue.put((None, keyframe_pose))
 
-    
+
     def display_keyframes(self):
         """ display image / depth keyframe pairs """
 
@@ -479,8 +480,9 @@ class DeepV2DSLAM:
             if len(self.keyframe_inds) > 1:
                 image_stack = cv2.resize(image_stack, None, fx=0.5, fy=0.5)
 
-            cv2.imshow('keyframes', image_stack / 255.0)
-            cv2.waitKey(10)
+            cv2.imwrite(f'{self.viz.render_path}/keyframe{self.index}.png', image_stack)
+            # cv2.imshow('keyframes', image_stack / 255.0)
+            # cv2.waitKey(10)
 
     def track(self, image):
         """ track the new frame """
@@ -509,7 +511,7 @@ class DeepV2DSLAM:
         updated_poses = self.sess.run(self.outputs['poses'], feed_dict=feed_dict)
 
         # relative pose between keyframe and new pose
-        dP = np.matmul(updated_poses[1], np.linalg.inv(updated_poses[0])) 
+        dP = np.matmul(updated_poses[1], np.linalg.inv(updated_poses[0]))
 
         # tracking probably lost, attempt recovery; sometimes caused by gaps between frames
         if pose_distance(dP) > 0.8:
@@ -521,7 +523,7 @@ class DeepV2DSLAM:
                 self.fixed_placeholder: fixed,
                 self.init_placeholder: True,
                 self.intrinsics_placeholder: self.intrinsics}
-                
+
             updated_poses = self.sess.run(self.outputs['poses'], feed_dict=feed_dict)
             dP = np.matmul(updated_poses[1], np.linalg.inv(updated_poses[0]))
 
@@ -557,7 +559,7 @@ class DeepV2DSLAM:
 
         else:
             dist = self.track(image)
-            
+
             if dist > 0.8:
                 new_keyframe_index = len(self.images) - 1
                 query_pose = self.poses[new_keyframe_index]

@@ -1,4 +1,4 @@
-# Visualization code, vtk point cloud and camera visualization adapted from 
+# Visualization code, vtk point cloud and camera visualization adapted from
 # DeMoN - Depth Motion Network https://github.com/lmb-freiburg/demon
 
 import numpy as np
@@ -40,7 +40,7 @@ def create_image_depth_figure(image, depth):
 def create_camera_polydata(R, t, only_polys=False):
     """Creates a vtkPolyData object with a camera mesh: https://github.com/lmb-freiburg/demon"""
     import vtk
-    cam_points = np.array([ 
+    cam_points = np.array([
         [0, 0, 0],
         [-1,-1, 1.5],
         [ 1,-1, 1.5],
@@ -52,7 +52,7 @@ def create_camera_polydata(R, t, only_polys=False):
         [ 1,-0.5,1.5],
         [ 1, 0.5,1.5],
         [ 1.2, 0, 1.5]]
-    ) 
+    )
     cam_points = (0.05*cam_points - t).dot(R)
 
     vpoints = vtk.vtkPoints()
@@ -61,12 +61,12 @@ def create_camera_polydata(R, t, only_polys=False):
         vpoints.SetPoint(i, cam_points[i])
     vpoly = vtk.vtkPolyData()
     vpoly.SetPoints(vpoints)
-    
+
     poly_cells = vtk.vtkCellArray()
 
     if not only_polys:
         line_cells = vtk.vtkCellArray()
-        
+
         line_cells.InsertNextCell( 5 );
         line_cells.InsertCellPoint( 1 );
         line_cells.InsertCellPoint( 2 );
@@ -133,7 +133,7 @@ def create_camera_polydata(R, t, only_polys=False):
 
 
 def create_camera_actor(R, t):
-    """https://github.com/lmb-freiburg/demon 
+    """https://github.com/lmb-freiburg/demon
     Creates a vtkActor object with a camera mesh
     """
     vpoly = create_camera_polydata(R, t)
@@ -151,10 +151,10 @@ def create_camera_actor(R, t):
 def create_pointcloud_polydata(points, colors=None):
     """https://github.com/lmb-freiburg/demon
     Creates a vtkPolyData object with the point cloud from numpy arrays
-    
+
     points: numpy.ndarray
         pointcloud with shape (n,3)
-    
+
     colors: numpy.ndarray
         uint8 array with colors for each point. shape is (n,3)
 
@@ -166,7 +166,7 @@ def create_pointcloud_polydata(points, colors=None):
         vpoints.SetPoint(i, points[i])
     vpoly = vtk.vtkPolyData()
     vpoly.SetPoints(vpoints)
-    
+
     if not colors is None:
         vcolors = vtk.vtkUnsignedCharArray()
         vcolors.SetNumberOfComponents(3)
@@ -177,22 +177,22 @@ def create_pointcloud_polydata(points, colors=None):
         vpoly.GetPointData().SetScalars(vcolors)
 
     vcells = vtk.vtkCellArray()
-    
+
     for i in range(points.shape[0]):
         vcells.InsertNextCell(1)
         vcells.InsertCellPoint(i)
-        
+
     vpoly.SetVerts(vcells)
-    
+
     return vpoly
 
 
 def create_pointcloud_actor(points, colors=None):
     """Creates a vtkActor with the point cloud from numpy arrays
-    
+
     points: numpy.ndarray
         pointcloud with shape (n,3)
-    
+
     colors: numpy.ndarray
         uint8 array with colors for each point. shape is (n,3)
 
@@ -236,7 +236,7 @@ def visualize_prediction(pointcloud, colors, poses=None, renwin=None):
     renwin.SetWindowName("Point Cloud Viewer")
     renwin.SetSize(800,600)
     renwin.AddRenderer(renderer)
- 
+
     # An interactor
     interactor = vtk.vtkRenderWindowInteractor()
     interstyle = vtk.vtkInteractorStyleTrackballCamera()
@@ -270,7 +270,7 @@ class vtkTimerCallback():
             renderer = renwin.GetRenderers().GetFirstRenderer()
 
             pointcloud, pose = self.queue.get(False)
-
+            print("Got point cloud and pose from queue")
 
             if pointcloud is not None:
                 if (self.point_actor is not None) and self.clear_points:
@@ -278,7 +278,7 @@ class vtkTimerCallback():
 
                 points, colors = pointcloud[0], pointcloud[1]
                 pointcloud_actor = create_pointcloud_actor(points, colors)
-                
+
                 renderer.AddActor(pointcloud_actor)
                 self.point_actor = pointcloud_actor
 
@@ -287,7 +287,7 @@ class vtkTimerCallback():
                 cam_actor = create_camera_actor(R,t)
                 cam_actor.GetProperty().SetColor((255, 255, 0))
                 renderer.AddActor(cam_actor)
-                
+
                 if self.cinematic:
                     camera = renderer.GetActiveCamera()
 
@@ -295,7 +295,7 @@ class vtkTimerCallback():
                         pos = np.array([-0.3, -3.0, -8.0, 1])
                     else:
                         pos = np.array([-0.3, -0.3, -1.0, 1])
-                    
+
                     pos = np.dot(np.linalg.inv(pose)[:3], pos)
 
                     if self.pos is None:
@@ -303,7 +303,7 @@ class vtkTimerCallback():
 
                     self.pos = (1-self.alpha) * self.pos + self.alpha * pos
                     camera.SetPosition(*self.pos)
-                    
+
                     pt = np.array([0, 0.5, 3, 1])
                     pt = np.dot(np.linalg.inv(pose)[:3], pt)
 
@@ -313,8 +313,8 @@ class vtkTimerCallback():
                     self.pt = (1-self.alpha) * self.pt + self.alpha * pt
                     camera.SetFocalPoint(*self.pt)
 
-            renwin.Render()
 
+            renwin.Render()
             if (pose is not None) and (self.render_path is not None):
                 w2if = vtk.vtkWindowToImageFilter()
                 w2if.SetInput(renwin)
@@ -328,8 +328,8 @@ class vtkTimerCallback():
                 writer.Write()
 
                 self.write_count += 1
-                
 
+        print(f"Timer count: {self.timer_count}")
         self.timer_count += 1
 
 
@@ -342,7 +342,10 @@ class InteractiveViz(Process):
         self.clear_points = clear_points
         self.is_kitti = is_kitti
 
+        print(f"Started visualization: Render path: {render_path}")
+
     def run(self):
+        print(f"Entered InteractiveViz run")
         renderer = vtk.vtkRenderer()
         renderer.SetBackground(0, 0, 0)
 
@@ -370,6 +373,8 @@ class InteractiveViz(Process):
         interactor.AddObserver('TimerEvent', cb.execute)
         timerId = interactor.CreateRepeatingTimer(100);
 
-        #start the interaction and timer
+        #if render_path is None:
+        #    #start the interaction and timer
+        print("Starting interactor")
         interactor.Start()
 
